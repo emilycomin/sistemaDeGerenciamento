@@ -1,0 +1,272 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  avatarUrl          String?
+  googleRefreshToken String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  teamMembers TeamMember[]
+  tasks       Task[]       @relation("AssignedTasks")
+  createdTasks Task[]      @relation("CreatedTasks")
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  logoUrl     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Missão, Visão, Valores
+  mission String?
+  vision  String?
+  values  String?
+
+  // Metas financeiras mensais
+  revenueGoal  Float?
+  expenseLimit Float?
+
+  members      TeamMember[]
+  contacts     Contact[]
+  transactions Transaction[]
+  services     Service[]
+  tasks        Task[]
+  events       CalendarEvent[]
+  metrics      Metric[]
+  goals        Goal[]
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  role      Role     @default(MEMBER)
+  createdAt DateTime @default(now())
+
+  userId String
+  teamId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+// ===== CRM =====
+
+model Contact {
+  id        String        @id @default(cuid())
+  name      String
+  email     String?
+  phone     String?
+  company   String?
+  position  String?
+  status    ContactStatus @default(LEAD)
+  notes       String?
+  avatarUrl   String?
+  tags        String[]
+  lastContact DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+}
+
+enum ContactStatus {
+  LEAD
+  PROSPECT
+  CLIENT
+  INACTIVE
+}
+
+// ===== FINANÇAS =====
+
+model Transaction {
+  id          String          @id @default(cuid())
+  type        TransactionType
+  amount      Float
+  description String
+  category    String
+  date        DateTime
+  status      PaymentStatus   @default(PENDING)
+  notes       String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  teamId    String
+  serviceId String?
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  service   Service? @relation(fields: [serviceId], references: [id])
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+// ===== SERVIÇOS =====
+
+model Service {
+  id                 String        @id @default(cuid())
+  name               String
+  description        String?
+  price              Float
+  category           String?
+  status             ServiceStatus @default(ACTIVE)
+  deliveryTime       String?   // ex: "7 dias úteis", "Entrega contínua"
+  workProcess        String?   // passos de entrega (um por linha)
+  deliverables       String?   // entregáveis inclusos (um por linha)
+  requiredDocuments  String?   // documentos necessários (um por linha)
+  referenceLinks     String?   // links úteis (um por linha)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  teamId       String
+  team         Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+}
+
+enum ServiceStatus {
+  ACTIVE
+  IN_DEVELOPMENT
+  INACTIVE
+  ARCHIVED
+}
+
+// ===== TAREFAS =====
+
+model Task {
+  id             String     @id @default(cuid())
+  title          String
+  description    String?
+  status         TaskStatus @default(TODO)
+  priority       Priority   @default(MEDIUM)
+  dueDate        DateTime?
+  scheduledStart DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  teamId     String
+  assigneeId String?
+  creatorId  String
+  team       Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  assignee   User?   @relation("AssignedTasks", fields: [assigneeId], references: [id])
+  creator    User    @relation("CreatedTasks", fields: [creatorId], references: [id])
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  REVIEW
+  DONE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// ===== CALENDÁRIO =====
+
+model CalendarEvent {
+  id              String    @id @default(cuid())
+  title           String
+  description     String?
+  start           DateTime
+  end             DateTime
+  allDay          Boolean   @default(false)
+  location        String?
+  googleEventId   String?
+  googleCalId     String?
+  syncedAt        DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+}
+
+// ===== MÉTRICAS =====
+
+model Metric {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  value       Float
+  unit        String?
+  category    String
+  period      String
+  trend       MetricTrend @default(STABLE)
+  target      Float?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+}
+
+enum MetricTrend {
+  UP
+  DOWN
+  STABLE
+}
+
+// ===== METAS =====
+
+model Goal {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  type        GoalType
+  status      GoalStatus @default(IN_PROGRESS)
+  progress    Int        @default(0)
+  deadline    DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  teamId   String
+  team     Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  children Goal[]    @relation("GoalHierarchy")
+  parent   Goal?     @relation("GoalHierarchy", fields: [parentId], references: [id])
+  parentId String?
+}
+
+enum GoalType {
+  SHORT_TERM
+  MEDIUM_TERM
+  LONG_TERM
+}
+
+enum GoalStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  PAUSED
+}
